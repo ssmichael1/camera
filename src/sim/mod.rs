@@ -32,7 +32,7 @@ impl SimCamera {
             width,
             height,
             bit_depth,
-            frame_rate: 10.0,
+            frame_rate: 30.0,
             callback: None,
             running: false,
             handle: None,
@@ -54,13 +54,18 @@ impl SimCamera {
                 let normal = Normal::new(0.0, ((maxval + 1) / 32) as f64).unwrap();
                 let offset = (maxval + 1) / 8;
                 let gval = ((maxval + 1) / 2) as f64;
+                use std::f64::consts::PI;
+
+                let now = chrono::Utc::now().timestamp_millis();
+                let xoffset = (now as f64 * 2.0 * PI / 5000.0).cos() * 100.0;
+                let yoffset = (now as f64 * 2.0 * PI / 3000.0 + PI/4.0).cos() * 57.0;
 
                 (0..self.width * self.height)
                     .map(|idx| {
                         let row = idx % self.width;
                         let col = idx / self.width;
-                        let x = col as f64 - self.height as f64 / 2.0;
-                        let y = row as f64 - self.width as f64 / 2.0;
+                        let x = col as f64 - self.height as f64 / 2.0 - xoffset;
+                        let y = row as f64 - self.width as f64 / 2.0 - yoffset;
                         let r = (x * x + y * y).sqrt();
                         let mut v = normal.sample(&mut rng) + offset as f64;
                         v += gval * f64::exp(-r * r / 100.0 / 100.0);
