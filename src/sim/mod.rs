@@ -3,9 +3,7 @@ use rand_distr::Distribution;
 use crate::Camera;
 use crate::CameraError;
 use crate::CameraFrame;
-use crate::CameraFrameType;
 use crate::FrameCallback;
-use crate::MonoFrameData;
 
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -37,58 +35,61 @@ impl SimCamera {
         }
     }
 
-    fn create_frame_data<T>(&self) -> MonoFrameData<T>
+    fn create_frame_data<T>(&self) -> Vec<u8>
     where
         T: crate::MonoPixel,
     {
-        MonoFrameData::<T> {
-            width: self.width as u32,
-            height: self.height as u32,
-            data: {
-                use rand_distr::Normal;
+        use rand_distr::Normal;
 
-                let mut rng = rand::rng();
-                let maxval = (1 << self.bit_depth as u32) - 1;
-                let normal = Normal::new(0.0, ((maxval + 1) / 32) as f64).unwrap();
-                let offset = (maxval + 1) / 8;
-                let gval = ((maxval + 1) / 2) as f64;
-                use std::f64::consts::PI;
+        let mut rng = rand::rng();
+        let maxval = (1 << self.bit_depth as u32) - 1;
+        let normal = Normal::new(0.0, ((maxval + 1) / 32) as f64).unwrap();
+        let offset = (maxval + 1) / 8;
+        let gval = ((maxval + 1) / 2) as f64;
+        use std::f64::consts::PI;
 
-                let now = chrono::Utc::now().timestamp_millis();
-                let xoffset = (now as f64 * 2.0 * PI / 5000.0).cos() * 100.0;
-                let yoffset = (now as f64 * 2.0 * PI / 3000.0 + PI / 4.0).cos() * 57.0;
+        let now = chrono::Utc::now().timestamp_millis();
+        let xoffset = (now as f64 * 2.0 * PI / 5000.0).cos() * 100.0;
+        let yoffset = (now as f64 * 2.0 * PI / 3000.0 + PI / 4.0).cos() * 57.0;
 
-                (0..self.width * self.height)
-                    .map(|idx| {
-                        let row = idx % self.width;
-                        let col = idx / self.width;
-                        let x = col as f64 - self.height as f64 / 2.0 - xoffset;
-                        let y = row as f64 - self.width as f64 / 2.0 - yoffset;
-                        let r = (x * x + y * y).sqrt();
-                        let mut v = normal.sample(&mut rng) + offset as f64;
-                        v += gval * f64::exp(-r * r / 100.0 / 100.0);
-
-                        rgb::Gray::<T>::new(T::from(v.clamp(0.0, 4095.0).round() as i64).unwrap())
-                    })
-                    .collect()
-            },
-        }
+        T::as_bytes(
+            &(0..self.width * self.height)
+                .map(|idx| {
+                    let row = idx % self.width;
+                    let col = idx / self.width;
+                    let x = col as f64 - self.height as f64 / 2.0 - xoffset;
+                    let y = row as f64 - self.width as f64 / 2.0 - yoffset;
+                    let r = (x * x + y * y).sqrt();
+                    let mut v = normal.sample(&mut rng) + offset as f64;
+                    v += gval * f64::exp(-r * r / 100.0 / 100.0);
+                    let v = v.round().clamp(0.0, maxval as f64) as i64;
+                    num_traits::cast(v).unwrap()
+                })
+                .collect::<Vec<T>>(),
+        )
+        .to_vec()
     }
 
-    fn create_frame(&self) -> CameraFrameType {
+    fn create_frame(&self) -> CameraFrame {
         match self.bit_depth <= 8 {
-            true => crate::CameraFrameType::Mono8(CameraFrame::<rgb::Gray<u8>>::create(
+            true => CameraFrame::new(
                 self.exposure,
                 chrono::Utc::now(),
-                self.bit_depth,
+                crate::PixelType::Gray8,
+                Some(self.bit_depth),
                 self.create_frame_data::<u8>(),
-            )),
-            false => crate::CameraFrameType::Mono16(CameraFrame::<rgb::Gray<u16>>::create(
+                self.width,
+                self.height,
+            ),
+            false => CameraFrame::new(
                 self.exposure,
                 chrono::Utc::now(),
-                self.bit_depth,
+                crate::PixelType::Gray16,
+                Some(self.bit_depth),
                 self.create_frame_data::<u16>(),
-            )),
+                self.width,
+                self.height,
+            ),
         }
     }
 
@@ -204,7 +205,7 @@ mod test {
         cam.set_exposure(0.1).unwrap();
 
         cam.set_frame_callback(Box::new(
-            move |_t: CameraFrameType| -> Result<(), CameraError> { Ok(()) },
+            move |_t: CameraFrame| -> Result<(), CameraError> { Ok(()) },
         ))
         .unwrap();
         cam.start().unwrap();

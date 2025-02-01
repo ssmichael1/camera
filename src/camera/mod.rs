@@ -1,6 +1,6 @@
-use crate::CameraFrameType;
+use crate::CameraFrame;
 
-pub type FrameCallback = dyn Fn(CameraFrameType) -> Result<(), crate::CameraError> + Send + Sync;
+pub type FrameCallback = dyn Fn(CameraFrame) -> Result<(), crate::CameraError> + Send + Sync;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CameraError {

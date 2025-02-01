@@ -1,10 +1,8 @@
-use crate::Camera;
-use crate::CameraFrameType;
-use crate::FrameCallback;
-use crate::MonoCameraFrame;
-use crate::MonoFrameData;
-
 use crate::svbony::lowlevel as ll;
+use crate::Camera;
+use crate::CameraFrame;
+use crate::FrameCallback;
+use crate::PixelType;
 
 pub use ll::SVBCameraInfo;
 pub use ll::{SVBBayerPattern, SVBCameraProperty, SVBErrorCode, SVBPixelType};
@@ -109,17 +107,15 @@ impl SVBonyCamera {
             match bit_depth {
                 8 => {
                     let ts = self.get_frame(&mut buf8, wait_ms)?;
-                    let framedata = MonoFrameData {
-                        data: buf8[..npixels]
-                            .iter()
-                            .map(|x| rgb::Gray::<u8>::from(*x))
-                            .collect(),
-                        width: width as u32,
-                        height: height as u32,
+                    let frame = CameraFrame {
+                        exposure,
+                        center_of_integration: ts,
+                        pixeltype: PixelType::Gray8,
+                        bit_depth: Some(8),
+                        data: buf8[..npixels].to_vec(),
+                        width: width as usize,
+                        height: height as usize,
                     };
-                    let frame = CameraFrameType::Mono8(MonoCameraFrame::<u8>::create(
-                        exposure, ts, 8, framedata,
-                    ));
                     if let Some(cb) = &self.callback {
                         cb(frame)?;
                     }
@@ -127,20 +123,15 @@ impl SVBonyCamera {
 
                 10 | 12 | 14 | 16 => {
                     let ts = self.get_frame(&mut buf16, wait_ms)?;
-                    let framedata = MonoFrameData {
-                        data: buf16
-                            .iter()
-                            .map(|x| rgb::Gray::<u16>::from((x.swap_bytes()) >> 4))
-                            .collect(),
-                        width: width as u32,
-                        height: height as u32,
-                    };
-                    let frame = CameraFrameType::Mono16(MonoCameraFrame::<u16>::create(
+                    let frame = CameraFrame {
                         exposure,
-                        ts,
-                        bit_depth as u8,
-                        framedata,
-                    ));
+                        center_of_integration: ts,
+                        pixeltype: PixelType::Gray16,
+                        bit_depth: Some(bit_depth as u8),
+                        data: bytemuck::cast_slice(&buf16[..npixels]).to_vec(),
+                        width: width as usize,
+                        height: height as usize,
+                    };
                     if let Some(cb) = &self.callback {
                         cb(frame)?;
                     }

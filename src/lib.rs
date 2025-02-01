@@ -8,15 +8,10 @@ mod pixel;
 mod sim;
 
 pub use cameraframe::CameraFrame;
-pub use cameraframe::CameraFrameRGB;
-pub use cameraframe::CameraFrameRGBA;
-pub use cameraframe::CameraFrameType;
-pub use cameraframe::FrameData;
-pub use cameraframe::MonoCameraFrame;
-pub use cameraframe::MonoFrameData;
 
 pub use pixel::MonoPixel;
 pub use pixel::Pixel;
+pub use pixel::PixelType;
 
 pub use camera::Camera;
 pub use camera::CameraError;
