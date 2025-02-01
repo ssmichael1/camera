@@ -4,13 +4,11 @@ use crate::Camera;
 use crate::CameraError;
 use crate::CameraFrame;
 use crate::CameraFrameType;
+use crate::FrameCallback;
 use crate::MonoFrameData;
 
 use std::sync::{Arc, RwLock};
 use std::thread;
-
-type FrameCallback =
-    Box<dyn Fn(CameraFrameType) -> Result<(), CameraError> + Send + Sync + 'static>;
 
 pub struct SimCamera {
     exposure: f64,
@@ -19,7 +17,7 @@ pub struct SimCamera {
     height: usize,
     bit_depth: u8,
     frame_rate: f64,
-    callback: Option<FrameCallback>,
+    callback: Option<Arc<FrameCallback>>,
     running: bool,
     handle: Option<thread::JoinHandle<()>>,
 }
@@ -58,7 +56,7 @@ impl SimCamera {
 
                 let now = chrono::Utc::now().timestamp_millis();
                 let xoffset = (now as f64 * 2.0 * PI / 5000.0).cos() * 100.0;
-                let yoffset = (now as f64 * 2.0 * PI / 3000.0 + PI/4.0).cos() * 57.0;
+                let yoffset = (now as f64 * 2.0 * PI / 3000.0 + PI / 4.0).cos() * 57.0;
 
                 (0..self.width * self.height)
                     .map(|idx| {
@@ -188,11 +186,8 @@ impl Camera for Arc<RwLock<SimCamera>> {
         Ok(())
     }
 
-    fn on_frame_available(
-        &mut self,
-        f: Box<dyn Fn(CameraFrameType) -> Result<(), CameraError> + Send + Sync + 'static>,
-    ) -> Result<(), CameraError> {
-        self.write().unwrap().callback = Some(f);
+    fn set_frame_callback(&mut self, f: Box<FrameCallback>) -> Result<(), CameraError> {
+        self.write().unwrap().callback = Some(Arc::new(f));
         Ok(())
     }
 }
@@ -208,7 +203,7 @@ mod test {
         println!("to connect");
         cam.set_exposure(0.1).unwrap();
 
-        cam.on_frame_available(Box::new(
+        cam.set_frame_callback(Box::new(
             move |_t: CameraFrameType| -> Result<(), CameraError> { Ok(()) },
         ))
         .unwrap();

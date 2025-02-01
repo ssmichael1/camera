@@ -1,21 +1,16 @@
+use crate::Camera;
+use crate::CameraFrameType;
+use crate::FrameCallback;
+use crate::MonoCameraFrame;
+use crate::MonoFrameData;
+
 use crate::svbony::lowlevel as ll;
 
 pub use ll::SVBCameraInfo;
-pub use ll::{SVBBayerPattern, SVBCameraProperty, SVBErrorCode, SVBImageType};
+pub use ll::{SVBBayerPattern, SVBCameraProperty, SVBErrorCode, SVBPixelType};
 pub use ll::{SVBControlCaps, SVBControlType};
 
 use std::sync::{Arc, Mutex};
-
-pub enum FrameData<'a> {
-    U8Frame(&'a [u8]),
-    U16Frame(&'a [u16]),
-}
-
-pub trait CameraCallback: Send + Sync {
-    fn on_video_frame(&mut self, data: &FrameData, timestamp: chrono::DateTime<chrono::Utc>);
-}
-
-pub type CameraCallbackFunction = dyn Fn(&FrameData, chrono::DateTime<chrono::Utc>) + Send + Sync;
 
 #[derive(Clone)]
 pub struct SVBonyCamera {
@@ -24,9 +19,8 @@ pub struct SVBonyCamera {
     property: SVBCameraProperty,
     pixel_pitch: f64,
     capabilities: Vec<SVBControlCaps>,
-    callbacks: Vec<Arc<Mutex<dyn CameraCallback>>>,
-    function_callbacks: Vec<Arc<CameraCallbackFunction>>,
     running: Arc<Mutex<bool>>,
+    callback: Option<Arc<FrameCallback>>,
 }
 
 type SVBResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -75,78 +69,89 @@ impl SVBonyCamera {
                     })
                     .collect::<SVBResult<Vec<SVBControlCaps>>>()?
             },
-            callbacks: Vec::new(),
-            function_callbacks: Vec::new(),
             running: Arc::new(Mutex::new(false)),
+            callback: None,
         })
     }
 
     pub fn run(&mut self) -> SVBResult<()> {
-        let nbuffers = 10;
-        let mut buffers: Vec<Vec<u16>> = (0..nbuffers)
-            .map(|_| vec![0u16; (self.max_width() * self.max_height()) as usize])
-            .collect();
-        let bufcounter = 0;
-
         // Recommended timeout from vendor is 2x exposure time + 500ms
         // and exposure is queried in microseconds
-        let wait_ms = self.exposure()? * 2 / 1000 + 500;
-
-        self.start_video_capture().unwrap();
+        let wait_ms = self.get_exposure()? as i32 * 2 / 1000 + 500;
         *self.running.lock().unwrap() = true;
+        self.set_control_value(SVBControlType::SVBFrameSpeedMode, 2)?;
+        self.set_exposure(30000.0)?;
+        ll::set_auto_save(&self.id, false)?;
 
+        let max_pixels = (self.max_width() * self.max_height()) as usize;
+        let mut buf8 = vec![0u8; max_pixels];
+        let mut buf16 = vec![0u16; max_pixels];
+
+        let pixeltype = ll::get_pixel_type(self.id)?;
+        let exposure = self.get_exposure()?;
+        let (_startx, _starty, width, height, bin) = ll::get_roi_format(self.id)?;
+        let npixels = (width * height) as usize;
+        let bit_depth = match pixeltype {
+            SVBPixelType::Raw8 => 8 * bin * bin,
+            SVBPixelType::Raw10 => 10 * bin * bin,
+            SVBPixelType::Raw12 => 12 * bin * bin,
+            SVBPixelType::Raw14 => 14 * bin * bin,
+            SVBPixelType::Raw16 => 12 * bin * bin,
+            _ => 8 * bin * bin,
+        };
+        println!("bit_depth = {}", bit_depth);
+        println!("exposure = {}", exposure);
+        println!("npixels = {}", npixels);
+        println!("pixeltype = {:?}", pixeltype);
+
+        ll::start_capture(&self.id)?;
         while *self.running.lock().unwrap() {
-            let ts = match self.get_frame(&mut buffers[bufcounter], wait_ms) {
-                Ok(ts) => ts,
-                Err(e) => {
-                    if e == SVBErrorCode::Timeout && !(*self.running.lock().unwrap()) {
-                        break;
-                    } else {
-                        return Err(e.into());
+            match bit_depth {
+                8 => {
+                    let ts = self.get_frame(&mut buf8, wait_ms)?;
+                    let framedata = MonoFrameData {
+                        data: buf8[..npixels]
+                            .iter()
+                            .map(|x| rgb::Gray::<u8>::from(*x))
+                            .collect(),
+                        width: width as u32,
+                        height: height as u32,
+                    };
+                    let frame = CameraFrameType::Mono8(MonoCameraFrame::<u8>::create(
+                        exposure, ts, 8, framedata,
+                    ));
+                    if let Some(cb) = &self.callback {
+                        cb(frame)?;
                     }
                 }
-            };
-            for cb in self.callbacks.iter_mut() {
-                cb.lock()
-                    .unwrap()
-                    .on_video_frame(&FrameData::U16Frame(&buffers[bufcounter]), ts);
+
+                10 | 12 | 14 | 16 => {
+                    let ts = self.get_frame(&mut buf16, wait_ms)?;
+                    let framedata = MonoFrameData {
+                        data: buf16
+                            .iter()
+                            .map(|x| rgb::Gray::<u16>::from((x.swap_bytes()) >> 4))
+                            .collect(),
+                        width: width as u32,
+                        height: height as u32,
+                    };
+                    let frame = CameraFrameType::Mono16(MonoCameraFrame::<u16>::create(
+                        exposure,
+                        ts,
+                        bit_depth as u8,
+                        framedata,
+                    ));
+                    if let Some(cb) = &self.callback {
+                        cb(frame)?;
+                    }
+                }
+                _ => {
+                    return Err("Unsupported bit depth".into());
+                }
             }
-            for cb in self.function_callbacks.iter() {
-                cb(&FrameData::U16Frame(&buffers[bufcounter]), ts);
-            }
-        }
-        Ok(())
-    }
-
-    pub fn stop(&mut self) {
-        println!("setting running to false");
-        *self.running.lock().unwrap() = false;
-        self.stop_video_capture().unwrap();
-    }
-
-    /// Add a callback to the camera
-    /// # Arguments
-    /// * `callback` - The callback object
-    ///
-    /// # Notes
-    ///    The callback object must implement the CameraCallback trait
-    ///
-    /// # Returns
-    ///   Empty result if successful
-    ///  Error if the callback cannot be added
-    pub fn add_callback<F>(&mut self, callback: F) -> SVBResult<()>
-    where
-        F: CameraCallback + Send + Sync + 'static,
-    {
-        self.callbacks.push(Arc::new(Mutex::new(callback)));
-        Ok(())
-    }
-
-    pub fn add_function_callback<F>(&mut self, callback: F) -> SVBResult<()>
-    where
-        F: Fn(&FrameData, chrono::DateTime<chrono::Utc>) + Send + Sync + 'static,
-    {
-        self.function_callbacks.push(Arc::new(callback));
+        } // end of while loop
+        ll::stop_capture(&self.id)
+            .map_err(|e: SVBErrorCode| crate::CameraError::Other(e.to_string()))?;
         Ok(())
     }
 
@@ -182,14 +187,6 @@ impl SVBonyCamera {
     ///   The number of dropped frames
     pub fn dropped_frames(&self) -> i32 {
         ll::get_dropped_frames(&self.id).unwrap_or(0)
-    }
-
-    /// Get the camera exposure time in microseconds
-    ///
-    /// # Returns
-    ///     The exposure time in microseconds
-    pub fn exposure(&self) -> SVBResult<i32> {
-        self.get_control_value(SVBControlType::SVBExposure)
     }
 
     /// Get the camera pixel pitch in microns
@@ -291,7 +288,7 @@ impl SVBonyCamera {
     ///
     /// # Returns
     ///   A vector of supported video formats as SVBImageType enum
-    pub fn supported_video_formats(&self) -> Vec<SVBImageType> {
+    pub fn supported_video_formats(&self) -> Vec<SVBPixelType> {
         self.property.supported_video_format.clone()
     }
 
@@ -344,20 +341,6 @@ impl SVBonyCamera {
         }
     }
 
-    /// Start video capture
-    ///
-    /// # Note: User must call get_video_frame to get the video frames
-    ///
-    /// # Returns
-    /// Empty result if successful
-    /// Error if the video capture fails
-    pub fn start_video_capture(&self) -> SVBResult<()> {
-        match ll::start_capture(&self.id) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
-    }
-
     pub fn get_frame<T>(
         &self,
         data: &mut [T],
@@ -371,17 +354,68 @@ impl SVBonyCamera {
             Err(e) => Err(e),
         }
     }
+}
 
-    /// Stop video capture
-    ///
-    /// # Returns
-    /// Empty result if successful
-    /// Error if the stopping the video capture fails
-    pub fn stop_video_capture(&self) -> SVBResult<()> {
-        match ll::stop_capture(&self.id) {
+impl From<SVBErrorCode> for crate::CameraError {
+    fn from(e: SVBErrorCode) -> crate::CameraError {
+        crate::CameraError::Other(format!("{}", e))
+    }
+}
+
+impl Camera for SVBonyCamera {
+    fn name(&self) -> String {
+        self.info.friendly_name.clone()
+    }
+
+    fn connect(&mut self) -> Result<(), crate::CameraError> {
+        match ll::open_camera(self.id) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
+    }
+
+    fn disconnect(&mut self) -> Result<(), crate::CameraError> {
+        match ll::close_camera(&self.id) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn start(&mut self) -> Result<(), crate::CameraError> {
+        let mut cam = self.clone();
+        std::thread::spawn(move || -> SVBResult<()> { cam.run() });
+        Ok(())
+    }
+
+    fn get_exposure(&self) -> Result<f64, crate::CameraError> {
+        ll::get_control_value(&self.id, SVBControlType::SVBExposure)
+            .map(|v| v.0 as f64)
+            .map_err(|e| e.into())
+    }
+
+    fn set_exposure(&mut self, exposure: f64) -> Result<(), crate::CameraError> {
+        ll::set_control_value(
+            &self.id,
+            SVBControlType::SVBExposure,
+            exposure as i32,
+            false,
+        )
+        .map_err(|e| e.into())
+    }
+
+    fn get_max_roi(&self) -> Result<(u32, u32, u32, u32), crate::CameraError> {
+        let prop = self.get_properties();
+        Ok((0, 0, prop.max_width as u32, prop.max_height as u32))
+    }
+
+    fn stop(&mut self) -> Result<(), crate::CameraError> {
+        *self.running.lock().unwrap() = false;
+        Ok(())
+    }
+
+    fn set_frame_callback(&mut self, cb: Box<FrameCallback>) -> Result<(), crate::CameraError> {
+        self.callback = Some(Arc::new(cb));
+        Ok(())
     }
 }
 
@@ -422,9 +456,8 @@ impl std::fmt::Display for SVBonyCamera {
 
 #[cfg(test)]
 mod test {
-    use std::io::Write;
-
     use super::*;
+    use crate::CameraError;
 
     #[test]
     fn test_get_connected_cameras() {
@@ -438,12 +471,12 @@ mod test {
         if cameras.is_empty() {
             return;
         }
-        let cam = SVBonyCamera::new(0).unwrap();
-        cam.start_video_capture().unwrap();
+        let mut cam = SVBonyCamera::new(0).unwrap();
+        cam.start().unwrap();
         let mut data = vec![0u8; (cam.max_width() * cam.max_height()) as usize];
         let ts = cam.get_frame(&mut data, 1000).unwrap();
         println!("ts = {}", ts);
-        cam.stop_video_capture().unwrap();
+        cam.stop().unwrap();
     }
 
     #[test]
@@ -453,67 +486,9 @@ mod test {
             return;
         }
         let cam = SVBonyCamera::new(0).unwrap();
-        println!("cam = {}", cam);
         cam.capabilities.iter().for_each(|c| {
             println!("{}", c);
         });
-    }
-
-    #[test]
-    fn test_write() {
-        let cameras = get_connected_cameras().unwrap();
-        if cameras.is_empty() {
-            return;
-        }
-        let mut cam = SVBonyCamera::new(0).unwrap();
-        cam.set_exposure(10000).unwrap();
-        cam.set_control_value(SVBControlType::SVBFrameSpeedMode, 0)
-            .unwrap();
-        println!("cam = {}", cam);
-
-        #[derive(Debug)]
-        struct RawWriteCallback {
-            fs: std::fs::File,
-        }
-        impl RawWriteCallback {
-            fn new() -> Self {
-                let fs = std::fs::File::create("test.raw").unwrap();
-                RawWriteCallback { fs }
-            }
-        }
-
-        impl CameraCallback for RawWriteCallback {
-            fn on_video_frame(
-                &mut self,
-                data: &FrameData,
-                _timestamp: chrono::DateTime<chrono::Utc>,
-            ) {
-                match data {
-                    FrameData::U8Frame(data) => {
-                        self.fs.write_all(data).unwrap();
-                    }
-                    FrameData::U16Frame(data) => {
-                        self.fs
-                            .write_all(unsafe {
-                                std::slice::from_raw_parts(
-                                    data.as_ptr() as *const u8,
-                                    std::mem::size_of_val(*data),
-                                )
-                            })
-                            .unwrap();
-                    }
-                }
-            }
-        }
-        let cc = RawWriteCallback::new();
-        cam.add_callback(cc).unwrap();
-        let mut camclone = cam.clone();
-        let handle = std::thread::spawn(move || {
-            camclone.run().unwrap();
-        });
-        std::thread::sleep(std::time::Duration::from_secs(5));
-        cam.stop();
-        handle.join().unwrap();
     }
 
     #[test]
@@ -524,14 +499,15 @@ mod test {
         }
         let mut cam = SVBonyCamera::new(0).unwrap();
         cam.set_exposure(100000).unwrap();
-        cam.add_function_callback(|_data, ts| {
-            println!("ts = {}", ts);
-        })
+        cam.set_frame_callback(Box::new(move |_f| -> Result<(), CameraError> {
+            println!("ts");
+            Ok(())
+        }))
         .unwrap();
         let mut camclone = cam.clone();
         let handle = std::thread::spawn(move || -> SVBResult<()> { camclone.run() });
         std::thread::sleep(std::time::Duration::from_secs(1));
-        cam.stop();
+        cam.stop().unwrap();
         handle.join().unwrap().unwrap();
     }
 
@@ -546,7 +522,7 @@ mod test {
         cam.set_gain(30).unwrap();
 
         println!("cam = {}", cam);
-        println!("exposure = {}", cam.exposure().unwrap());
+        println!("exposure = {}", cam.get_exposure().unwrap());
         println!("gain = {}", cam.gain().unwrap());
     }
 }

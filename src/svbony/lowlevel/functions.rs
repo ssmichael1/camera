@@ -127,7 +127,7 @@ pub fn get_number_of_controls(id: &i32) -> Result<usize, SVBErrorCode> {
     }
 }
 
-pub fn get_output_image_type(id: i32) -> Result<SVBImageType, SVBErrorCode> {
+pub fn get_pixel_type(id: i32) -> Result<SVBPixelType, SVBErrorCode> {
     let mut image_type = 0;
     let result = unsafe { SVBGetOutputImageType(id, &mut image_type) }.into();
     if result == SVBErrorCode::Success {
@@ -137,7 +137,7 @@ pub fn get_output_image_type(id: i32) -> Result<SVBImageType, SVBErrorCode> {
     }
 }
 
-pub fn set_output_image_type(id: i32, image_type: SVBImageType) -> Result<(), SVBErrorCode> {
+pub fn set_pixel_type(id: i32, image_type: SVBPixelType) -> Result<(), SVBErrorCode> {
     let result = unsafe { SVGSetOutputImageType(id, image_type as i32) }.into();
     if result == SVBErrorCode::Success {
         Ok(())
@@ -521,7 +521,7 @@ mod tests {
             println!("{:?}", property);
             let mode = get_camera_mode(&info.camera_id).unwrap();
             println!("camera mode = {:?}", mode);
-            let format = get_output_image_type(info.camera_id).unwrap();
+            let format = get_pixel_type(info.camera_id).unwrap();
             println!("output format = {:?}", format);
             let mut buf = vec![0u16; property.max_width as usize * property.max_height as usize];
             start_capture(&info.camera_id).unwrap();

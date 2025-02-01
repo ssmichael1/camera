@@ -71,7 +71,7 @@ pub struct SVBCameraProperty {
     pub is_color_cam: bool,
     pub bayer_pattern: SVBBayerPattern,
     pub supported_bins: Vec<i32>,
-    pub supported_video_format: Vec<SVBImageType>,
+    pub supported_video_format: Vec<SVBPixelType>,
     pub max_bit_depth: i32,
     pub is_triggerable: bool,
 }
@@ -88,7 +88,7 @@ impl From<LLSVBCameraProperty> for SVBCameraProperty {
             .supported_video_format
             .iter()
             .take_while(|&&x| x != -1)
-            .map(|&x| SVBImageType::from(x))
+            .map(|&x| SVBPixelType::from(x))
             .collect();
         SVBCameraProperty {
             max_height: property.max_height as i32,

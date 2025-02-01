@@ -21,38 +21,38 @@ impl From<i32> for SVBBayerPattern {
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 #[repr(C)]
-pub enum SVBImageType {
-    SVBImageRaw8 = 0,
-    SVBImageRaw10 = 2,
-    SVBImageRaw12 = 3,
-    SVBImageRaw14 = 4,
-    SVBImageRaw16 = 5,
-    SVBImageY8 = 6,
-    SVBImageY10 = 7,
-    SVBImageY12 = 8,
-    SVBImageY14 = 9,
-    SVBImageY16 = 10,
-    SVBImageRGB24 = 11,
-    SVBImageRGB32 = 12,
-    SVBImageEnd = -1,
+pub enum SVBPixelType {
+    Raw8 = 0,
+    Raw10 = 2,
+    Raw12 = 3,
+    Raw14 = 4,
+    Raw16 = 5,
+    Y8 = 6,
+    Y10 = 7,
+    Y12 = 8,
+    Y14 = 9,
+    Y16 = 10,
+    RGB24 = 11,
+    RGB32 = 12,
+    End = -1,
 }
 
-impl From<i32> for SVBImageType {
+impl From<i32> for SVBPixelType {
     fn from(value: i32) -> Self {
         match value {
-            0 => SVBImageType::SVBImageRaw8,
-            2 => SVBImageType::SVBImageRaw10,
-            3 => SVBImageType::SVBImageRaw12,
-            4 => SVBImageType::SVBImageRaw14,
-            5 => SVBImageType::SVBImageRaw16,
-            6 => SVBImageType::SVBImageY8,
-            7 => SVBImageType::SVBImageY10,
-            8 => SVBImageType::SVBImageY12,
-            9 => SVBImageType::SVBImageY14,
-            10 => SVBImageType::SVBImageY16,
-            11 => SVBImageType::SVBImageRGB24,
-            12 => SVBImageType::SVBImageRGB32,
-            -1 => SVBImageType::SVBImageEnd,
+            0 => SVBPixelType::Raw8,
+            2 => SVBPixelType::Raw10,
+            3 => SVBPixelType::Raw12,
+            4 => SVBPixelType::Raw14,
+            5 => SVBPixelType::Raw16,
+            6 => SVBPixelType::Y8,
+            7 => SVBPixelType::Y10,
+            8 => SVBPixelType::Y12,
+            9 => SVBPixelType::Y14,
+            10 => SVBPixelType::Y16,
+            11 => SVBPixelType::RGB24,
+            12 => SVBPixelType::RGB32,
+            -1 => SVBPixelType::End,
             _ => panic!("Unknown SVBImageType value: {}", value),
         }
     }

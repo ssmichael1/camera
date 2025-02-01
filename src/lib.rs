@@ -20,6 +20,7 @@ pub use pixel::Pixel;
 
 pub use camera::Camera;
 pub use camera::CameraError;
+pub use camera::FrameCallback;
 
 pub use sim::SimCamera;
 

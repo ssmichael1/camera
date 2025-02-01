@@ -1,5 +1,7 @@
 use crate::CameraFrameType;
 
+pub type FrameCallback = dyn Fn(CameraFrameType) -> Result<(), crate::CameraError> + Send + Sync;
+
 #[derive(Debug, thiserror::Error)]
 pub enum CameraError {
     #[error("Connection error")]
@@ -12,6 +14,8 @@ pub enum CameraError {
     Write,
     #[error("Function not supported for this camera")]
     NotSupported,
+    #[error("Error: {0}")]
+    Other(String),
 }
 
 pub trait Camera {
@@ -63,10 +67,7 @@ pub trait Camera {
         Err(CameraError::NotSupported)
     }
 
-    fn on_frame_available(
-        &mut self,
-        _f: Box<dyn Fn(CameraFrameType) -> Result<(), CameraError> + Send + Sync + 'static>,
-    ) -> Result<(), CameraError> {
+    fn set_frame_callback(&mut self, _f: Box<FrameCallback>) -> Result<(), CameraError> {
         Err(CameraError::NotSupported)
     }
 
