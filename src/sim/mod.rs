@@ -5,6 +5,8 @@ use crate::CameraError;
 use crate::CameraFrame;
 use crate::FrameCallback;
 
+use numeris::image::*;
+
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -35,9 +37,9 @@ impl SimCamera {
         }
     }
 
-    fn create_frame_data<T>(&self) -> Vec<u8>
+    fn create_frame_data<T>(&self) -> Image<T>
     where
-        T: crate::MonoPixel,
+        T: num_traits::PrimInt + numeris::image::PixelType,
     {
         use rand_distr::Normal;
 
@@ -51,45 +53,31 @@ impl SimCamera {
         let now = chrono::Utc::now().timestamp_millis();
         let xoffset = (now as f64 * 2.0 * PI / 5000.0).cos() * 100.0;
         let yoffset = (now as f64 * 2.0 * PI / 3000.0 + PI / 4.0).cos() * 57.0;
-
-        T::as_bytes(
-            &(0..self.width * self.height)
-                .map(|idx| {
-                    let row = idx % self.width;
-                    let col = idx / self.width;
-                    let x = col as f64 - self.height as f64 / 2.0 - xoffset;
-                    let y = row as f64 - self.width as f64 / 2.0 - yoffset;
-                    let r = (x * x + y * y).sqrt();
-                    let mut v = normal.sample(&mut rng) + offset as f64;
-                    v += gval * f64::exp(-r * r / 100.0 / 100.0);
-                    let v = v.round().clamp(0.0, maxval as f64) as i64;
-                    num_traits::cast(v).unwrap()
-                })
-                .collect::<Vec<T>>(),
-        )
-        .to_vec()
+        let mut img: Image<T> = Image::<T>::zeros(self.width, self.height);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let x_f = x as f64 - self.width as f64 / 2.0 - xoffset;
+                let y_f = y as f64 - self.height as f64 / 2.0 - yoffset;
+                let r = (x_f * x_f + y_f * y_f).sqrt();
+                let mut v = normal.sample(&mut rng) + offset as f64;
+                v += gval * f64::exp(-r * r / 100.0 / 100.0);
+                let v = v.round().clamp(0.0, maxval as f64) as i64;
+                img[(x, y)] = num_traits::cast(v).unwrap();
+            }
+        }
+        img
     }
 
     fn create_frame(&self) -> CameraFrame {
-        match self.bit_depth <= 8 {
-            true => CameraFrame::new(
-                self.exposure,
-                chrono::Utc::now(),
-                crate::PixelType::Gray8,
-                Some(self.bit_depth),
-                self.create_frame_data::<u8>(),
-                self.width,
-                self.height,
-            ),
-            false => CameraFrame::new(
-                self.exposure,
-                chrono::Utc::now(),
-                crate::PixelType::Gray16,
-                Some(self.bit_depth),
-                self.create_frame_data::<u16>(),
-                self.width,
-                self.height,
-            ),
+        CameraFrame {
+            exposure: self.exposure,
+            center_of_integration: chrono::Utc::now(),
+            bit_depth: Some(self.bit_depth),
+            frame: match self.bit_depth {
+                0..=8 => self.create_frame_data::<u8>().into(),
+                9..=16 => self.create_frame_data::<u16>().into(),
+                _ => self.create_frame_data::<u32>().into(),
+            },
         }
     }
 
@@ -187,8 +175,11 @@ impl Camera for Arc<RwLock<SimCamera>> {
         Ok(())
     }
 
-    fn set_frame_callback(&mut self, f: Box<FrameCallback>) -> Result<(), CameraError> {
-        self.write().unwrap().callback = Some(Arc::new(f));
+    fn set_frame_callback<F>(&mut self, cb: F) -> Result<(), CameraError>
+    where
+        F: Fn(CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
+    {
+        self.write().unwrap().callback = Some(Arc::from(cb));
         Ok(())
     }
 }

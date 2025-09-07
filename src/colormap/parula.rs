@@ -269,7 +269,7 @@ pub fn parula() -> &'static ColorMap {
             [250, 251, 20],
         ];
         cm.iter()
-            .map(|x| rgb::RGBA8 {
+            .map(|x| numeris::image::RGBA8 {
                 r: x[0],
                 g: x[1],
                 b: x[2],

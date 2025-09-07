@@ -1,6 +1,6 @@
 mod parula;
 
-use rgb::RGBA8;
+use numeris::image::RGBA8;
 use std::sync::OnceLock;
 
 /// A colormap in our case is always 256 colors.

@@ -67,7 +67,10 @@ pub trait Camera {
         Err(CameraError::NotSupported)
     }
 
-    fn set_frame_callback(&mut self, _f: Box<FrameCallback>) -> Result<(), CameraError> {
+    fn set_frame_callback<F>(&mut self, _cb: F) -> Result<(), CameraError>
+    where
+        F: Fn(CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
+    {
         Err(CameraError::NotSupported)
     }
 
