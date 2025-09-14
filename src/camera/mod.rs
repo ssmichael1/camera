@@ -1,6 +1,6 @@
 use crate::CameraFrame;
 
-pub type FrameCallback = dyn Fn(CameraFrame) -> Result<(), crate::CameraError> + Send + Sync;
+pub type FrameCallback = dyn Fn(&CameraFrame) -> Result<(), crate::CameraError> + Send + Sync;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CameraError {
@@ -69,7 +69,7 @@ pub trait Camera {
 
     fn set_frame_callback<F>(&mut self, _cb: F) -> Result<(), CameraError>
     where
-        F: Fn(CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
+        F: Fn(&CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
     {
         Err(CameraError::NotSupported)
     }

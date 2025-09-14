@@ -95,7 +95,7 @@ impl SimCamera {
 
                 let frame = cam.create_frame();
                 if let Some(ref callback) = cam.callback {
-                    callback(frame).unwrap();
+                    callback(&frame).unwrap();
                 }
                 sleeptime = (1.0e6 / cam.frame_rate) as u64;
             }
@@ -177,9 +177,9 @@ impl Camera for Arc<RwLock<SimCamera>> {
 
     fn set_frame_callback<F>(&mut self, cb: F) -> Result<(), CameraError>
     where
-        F: Fn(CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
+        F: Fn(&CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
     {
-        self.write().unwrap().callback = Some(Arc::from(cb));
+        self.write().unwrap().callback = Some(Arc::new(cb));
         Ok(())
     }
 }
@@ -196,7 +196,7 @@ mod test {
         cam.set_exposure(0.1).unwrap();
 
         cam.set_frame_callback(Box::new(
-            move |_t: CameraFrame| -> Result<(), CameraError> { Ok(()) },
+            move |_t: &CameraFrame| -> Result<(), CameraError> { Ok(()) },
         ))
         .unwrap();
         cam.start().unwrap();

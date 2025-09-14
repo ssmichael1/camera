@@ -19,7 +19,7 @@ opt-level = 3
 [dependencies]
 libc = "0.2.175"
 thiserror = "2.0.16"
-chrono = "0.4.41"
+chrono = "0.4.42"
 png = "0.18.0"
 num-traits = "0.2.19"
 rand = "0.9.2"
