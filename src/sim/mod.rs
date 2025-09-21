@@ -1,8 +1,8 @@
 use rand_distr::Distribution;
 
-use crate::Camera;
 use crate::CameraError;
 use crate::CameraFrame;
+use crate::CameraTrait;
 use crate::FrameCallback;
 
 use numeris::image::*;
@@ -105,7 +105,7 @@ impl SimCamera {
     }
 }
 
-impl Camera for Arc<RwLock<SimCamera>> {
+impl CameraTrait for Arc<RwLock<SimCamera>> {
     fn connect(&mut self) -> Result<(), CameraError> {
         Ok(())
     }
@@ -174,7 +174,6 @@ impl Camera for Arc<RwLock<SimCamera>> {
         };
         Ok(())
     }
-
     fn set_frame_callback<F>(&mut self, cb: F) -> Result<(), CameraError>
     where
         F: Fn(&CameraFrame) -> Result<(), CameraError> + Send + Sync + 'static,
@@ -195,10 +194,8 @@ mod test {
         println!("to connect");
         cam.set_exposure(0.1).unwrap();
 
-        cam.set_frame_callback(Box::new(
-            move |_t: &CameraFrame| -> Result<(), CameraError> { Ok(()) },
-        ))
-        .unwrap();
+        cam.set_frame_callback(move |_t: &CameraFrame| -> Result<(), CameraError> { Ok(()) })
+            .unwrap();
         cam.start().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(400));
         cam.stop().unwrap();

@@ -29,3 +29,5 @@ numeris = { path = "../numeris" }
 
 [features]
 svbony = []
+sim = []
+default = ["svbony", "sim"]
