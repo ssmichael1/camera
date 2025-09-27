@@ -23,4 +23,5 @@ pub mod prelude {
     pub use crate::sim::SimCamera;
     #[cfg(feature = "svbony")]
     pub use crate::svbony::SVBonyCamera;
+    pub use crate::FrameType;
 }

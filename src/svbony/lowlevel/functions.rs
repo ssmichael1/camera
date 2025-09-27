@@ -21,7 +21,7 @@ extern "C" {
     ) -> c_int;
     fn SVBSetControlValue(id: c_int, ctrl: c_uint, value: c_long, auto: i32) -> c_int;
     fn SVBGetOutputImageType(id: c_int, image_type: *mut i32) -> c_int;
-    fn SVGSetOutputImageType(id: c_int, image_type: i32) -> c_int;
+    fn SVBSetOutputImageType(id: c_int, image_type: i32) -> c_int;
     fn SVBSetROIFormat(
         id: c_int,
         startx: c_int,
@@ -62,7 +62,7 @@ extern "C" {
     fn SVBGetVideoData(id: c_int, data: *mut c_uchar, size: c_long, waitms: c_int) -> c_int;
     fn SVBWhiteBalanceOnce(id: c_int) -> c_int;
     fn SVBGetCameraMode(id: c_int, mode: *mut c_int) -> c_int;
-    fn SVGSetCameraMode(id: c_int, mode: c_int) -> c_int;
+    fn SVBSetCameraMode(id: c_int, mode: c_int) -> c_int;
     fn SVBSendSoftTrigger(id: c_int) -> c_int;
     fn SVBGetSensorPixelSize(id: c_int, pixel_size: *mut c_float) -> c_int;
     fn SVBRestoreDefaultParam(id: c_int) -> c_int;
@@ -121,7 +121,7 @@ pub fn get_output_image_type(id: i32) -> Result<SVBImageType, SVBError> {
 }
 
 pub fn set_output_image_type(id: i32, image_type: SVBImageType) -> Result<(), SVBError> {
-    let result: SVBError = unsafe { SVGSetOutputImageType(id, image_type as i32) }.into();
+    let result: SVBError = unsafe { SVBSetOutputImageType(id, image_type as i32) }.into();
     result.into()
 }
 
@@ -169,7 +169,7 @@ pub fn get_camera_mode(id: &i32) -> Result<SVBCameraMode, SVBError> {
 }
 
 pub fn set_camera_mode(id: &i32, mode: SVBCameraMode) -> Result<(), SVBError> {
-    let result = unsafe { SVGSetCameraMode(*id, mode as i32) }.into();
+    let result = unsafe { SVBSetCameraMode(*id, mode as i32) }.into();
     if result == SVBError::Success {
         Ok(())
     } else {

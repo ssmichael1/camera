@@ -27,6 +27,9 @@ rand_distr = "0.5.1"
 bytemuck = "1.23.2"
 numeris = { path = "../numeris" }
 
+[dev-dependencies]
+png = "0.18.0"
+
 [features]
 svbony = []
 sim = []

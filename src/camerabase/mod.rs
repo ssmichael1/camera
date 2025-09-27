@@ -1,5 +1,7 @@
 use crate::CameraFrame;
 
+use std::sync::{Arc, RwLock};
+
 pub type FrameCallback =
     dyn Fn(&CameraFrame) -> Result<(), crate::CameraError> + Send + Sync + 'static;
 
@@ -78,19 +80,20 @@ pub trait CameraTrait {
     fn name(&self) -> String;
 }
 
+#[derive(Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Camera {
     #[cfg(feature = "svbony")]
-    SVBony(crate::svbony::SVBonyCamera),
+    SVBony(Arc<RwLock<crate::svbony::SVBonyCamera>>),
     #[cfg(feature = "sim")]
-    Sim(std::sync::Arc<std::sync::RwLock<crate::SimCamera>>),
+    Sim(Arc<RwLock<crate::SimCamera>>),
 }
 
 impl CameraTrait for Camera {
     fn connect(&mut self) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.connect(),
+            Camera::SVBony(cam) => cam.write().unwrap().connect(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.connect(),
         }
@@ -99,7 +102,7 @@ impl CameraTrait for Camera {
     fn disconnect(&mut self) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.disconnect(),
+            Camera::SVBony(cam) => cam.write().unwrap().disconnect(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.disconnect(),
         }
@@ -108,7 +111,7 @@ impl CameraTrait for Camera {
     fn set_exposure(&mut self, exposure: f64) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.set_exposure(exposure),
+            Camera::SVBony(cam) => cam.write().unwrap().set_exposure(exposure),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.set_exposure(exposure),
         }
@@ -117,7 +120,7 @@ impl CameraTrait for Camera {
     fn get_exposure(&self) -> Result<f64, CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.get_exposure(),
+            Camera::SVBony(cam) => cam.read().unwrap().get_exposure(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.get_exposure(),
         }
@@ -126,7 +129,7 @@ impl CameraTrait for Camera {
     fn get_exposure_limits(&self) -> Result<(f64, f64), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.get_exposure_limits(),
+            Camera::SVBony(cam) => cam.read().unwrap().get_exposure_limits(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.get_exposure_limits(),
         }
@@ -135,7 +138,7 @@ impl CameraTrait for Camera {
     fn set_gain(&mut self, gain: f64) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.set_gain(gain),
+            Camera::SVBony(cam) => cam.write().unwrap().set_gain(gain),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.set_gain(gain),
         }
@@ -144,7 +147,7 @@ impl CameraTrait for Camera {
     fn get_gain(&self) -> Result<f64, CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.get_gain(),
+            Camera::SVBony(cam) => cam.read().unwrap().get_gain(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.get_gain(),
         }
@@ -153,7 +156,7 @@ impl CameraTrait for Camera {
     fn get_roi(&self) -> Result<(u32, u32, u32, u32), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.get_roi(),
+            Camera::SVBony(cam) => cam.read().unwrap().get_roi(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.get_roi(),
         }
@@ -162,7 +165,7 @@ impl CameraTrait for Camera {
     fn set_roi(&mut self, x: u32, y: u32, width: u32, height: u32) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.set_roi(x, y, width, height),
+            Camera::SVBony(cam) => cam.write().unwrap().set_roi(x, y, width, height),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.set_roi(x, y, width, height),
         }
@@ -171,7 +174,7 @@ impl CameraTrait for Camera {
     fn get_max_roi(&self) -> Result<(u32, u32, u32, u32), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.get_max_roi(),
+            Camera::SVBony(cam) => cam.read().unwrap().get_max_roi(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.get_max_roi(),
         }
@@ -180,7 +183,7 @@ impl CameraTrait for Camera {
     fn start(&mut self) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.start(),
+            Camera::SVBony(cam) => cam.write().unwrap().start(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.start(),
         }
@@ -189,7 +192,7 @@ impl CameraTrait for Camera {
     fn stop(&mut self) -> Result<(), CameraError> {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.stop(),
+            Camera::SVBony(cam) => cam.write().unwrap().stop(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.stop(),
         }
@@ -201,7 +204,7 @@ impl CameraTrait for Camera {
     {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.set_frame_callback(cb),
+            Camera::SVBony(cam) => cam.write().unwrap().set_frame_callback(cb),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.set_frame_callback(cb),
         }
@@ -210,7 +213,7 @@ impl CameraTrait for Camera {
     fn name(&self) -> String {
         match self {
             #[cfg(feature = "svbony")]
-            Camera::SVBony(cam) => cam.name(),
+            Camera::SVBony(cam) => cam.read().unwrap().name(),
             #[cfg(feature = "sim")]
             Camera::Sim(cam) => cam.name(),
         }

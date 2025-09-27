@@ -135,7 +135,7 @@ impl From<i32> for SVBBool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum SVBControlType {
     SVBGain = 0,
     SVBExposure = 1,

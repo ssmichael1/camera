@@ -22,7 +22,7 @@ pub struct SVBonyCamera {
     info: SVBCameraInfo,
     property: SVBCameraProperty,
     pixel_pitch: f64,
-    capabilities: Vec<SVBControlCaps>,
+    pub capabilities: Vec<SVBControlCaps>,
     running: Arc<Mutex<bool>>,
     callback: Arc<Mutex<Option<Box<FrameCallback>>>>,
     exposure: Arc<Mutex<f64>>,
@@ -48,8 +48,17 @@ impl CameraTrait for SVBonyCamera {
             SVBError::InvalidId => CameraError::Connection,
             _ => CameraError::Other(format!("Failed to open camera: {}", e)),
         })?;
-        self.set_exposure(0.1)?;
-        self.set_gain(20.0)?;
+
+        ll::restore_default_parameters(&self.id).map_err(|e| {
+            CameraError::Other(format!("Failed to restore default parameters: {}", e))
+        })?;
+
+        ll::set_camera_mode(&self.id, ll::SVBCameraMode::SVBCameraModeNormal)
+            .map_err(|e| CameraError::Other(format!("Failed to set camera mode: {}", e)))?;
+        ll::set_output_image_type(self.id, ll::SVBImageType::SVBImageY14)
+            .map_err(|e| CameraError::Other(format!("Failed to set image type: {}", e)))?;
+
+        println!("exposure = {}", self.get_exposure()?);
 
         Ok(())
     }
@@ -64,7 +73,7 @@ impl CameraTrait for SVBonyCamera {
     /// Set exposure time in seconds
     fn set_exposure(&mut self, exposure: f64) -> Result<(), CameraError> {
         let exposure_us = (exposure * 1_000_000.0) as i32;
-        self.set_control_value(SVBControlType::SVBExposure, exposure_us)
+        self.set_control_value(SVBControlType::SVBExposure, exposure_us, true)
             .map_err(|e| CameraError::Other(format!("Failed to set exposure: {}", e)))?;
         // Now get the exposure
         let exp = self
@@ -91,7 +100,7 @@ impl CameraTrait for SVBonyCamera {
 
     fn set_gain(&mut self, gain: f64) -> Result<(), CameraError> {
         let gain_val = gain as i32;
-        self.set_control_value(SVBControlType::SVBGain, gain_val)
+        self.set_control_value(SVBControlType::SVBGain, gain_val, true)
             .map_err(|e| CameraError::Other(format!("Failed to set gain: {}", e)))
     }
 
@@ -207,7 +216,7 @@ impl SVBonyCamera {
                         self.max_height() as usize,
                         buffers[bufcounter]
                             .iter()
-                            .map(|&v| (u16::from_be(v) >> 4) & 0x3FFF) // 14-bit data in lower bits
+                            .map(|&v| u16::from_le(v) >> 4) // 14-bit data in lower bits
                             .collect::<Vec<u16>>(),
                     )
                     .unwrap()
@@ -344,13 +353,14 @@ impl SVBonyCamera {
     /// # Arguments
     ///  * `ctrl` - The control type
     ///  * `value` - The value to set
+    ///  * `auto` - Whether to set the control to auto mode
     ///
     /// # Returns
     ///  Empty result if successful
     /// Error if the value is invalid
     ///
-    pub fn set_control_value(&self, ctrl: SVBControlType, value: i32) -> SVBResult<()> {
-        ll::set_control_value(&self.id, ctrl, value, true)
+    pub fn set_control_value(&self, ctrl: SVBControlType, value: i32, auto: bool) -> SVBResult<()> {
+        ll::set_control_value(&self.id, ctrl, value, auto)
     }
 
     /// Query the value of a camera control
@@ -473,6 +483,44 @@ mod test {
     }
 
     #[test]
+    fn test_png_save() {
+        let cameras = get_connected_cameras().unwrap();
+        if cameras.is_empty() {
+            return;
+        }
+        let mut cam = SVBonyCamera::new(0).unwrap();
+        cam.connect().unwrap();
+
+        ll::set_output_image_type(cam.id, SVBImageType::SVBImageY14).unwrap();
+        println!("roi = {:?}", ll::get_roi_format(cam.id).unwrap());
+        println!("{:?}", ll::get_camera_property(&cam.id).unwrap());
+
+        cam.start_video_capture().unwrap();
+        let mut data = vec![0u16; (cam.max_width() * cam.max_height()) as usize];
+        let _ts = cam.get_frame(&mut data, 2000).unwrap();
+        cam.stop_video_capture().unwrap();
+
+        // create a big-endian buffer for saving as png
+
+        println!("data len = {}", data.len());
+        println!("expected len = {}", (cam.max_width() * cam.max_height()));
+        let data = data
+            .iter()
+            .map(|&v| (u16::from_le(v) >> 4)) // 14-bit data in lower bits
+            .collect::<Vec<u16>>();
+
+        let file = std::fs::File::create("test_image.png").unwrap();
+        let w = &mut std::io::BufWriter::new(file);
+        let mut encoder = png::Encoder::new(w, cam.max_width() as u32, cam.max_height() as u32);
+        encoder.set_color(png::ColorType::Grayscale);
+        encoder.set_depth(png::BitDepth::Sixteen);
+        let mut writer = encoder.write_header().unwrap();
+        writer
+            .write_image_data(bytemuck::cast_slice(&data))
+            .unwrap();
+    }
+
+    #[test]
     fn test_in_thread() {
         let cameras = get_connected_cameras().unwrap();
         if cameras.is_empty() {
@@ -509,7 +557,8 @@ mod test {
         }
         let mut cam = SVBonyCamera::new(0).unwrap();
 
-        cam.set_gain(30.0).unwrap();
+        cam.set_exposure(0.03).unwrap();
+        cam.set_gain(10.0).unwrap();
 
         println!("cam = {}", cam);
         println!("exposure = {}", cam.get_exposure().unwrap());

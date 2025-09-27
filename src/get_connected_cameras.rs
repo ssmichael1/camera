@@ -1,5 +1,7 @@
 use crate::Camera;
 
+use std::sync::{Arc, RwLock};
+
 #[cfg(feature = "svbony")]
 use crate::svbony;
 
@@ -8,18 +10,18 @@ pub fn get_connected_cameras() -> Vec<Camera> {
 
     #[cfg(feature = "sim")]
     {
-        cameras.push(Camera::Sim(std::sync::Arc::new(std::sync::RwLock::new(
-            crate::SimCamera::new(640, 480, 8),
-        ))));
+        cameras.push(Camera::Sim(Arc::new(RwLock::new(crate::SimCamera::new(
+            640, 480, 8,
+        )))))
     }
     #[cfg(feature = "svbony")]
     {
         let cams = crate::svbony::get_connected_cameras().unwrap();
-        cameras.extend(
-            cams.into_iter()
-                .enumerate()
-                .map(|(idx, _)| Camera::SVBony(svbony::SVBonyCamera::new(idx).unwrap())),
-        );
+        cameras.extend(cams.into_iter().enumerate().map(|(idx, _)| {
+            Camera::SVBony(Arc::new(RwLock::new(
+                svbony::SVBonyCamera::new(idx).unwrap(),
+            )))
+        }));
     }
 
     cameras
