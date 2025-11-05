@@ -58,8 +58,6 @@ impl CameraTrait for SVBonyCamera {
         ll::set_output_image_type(self.id, ll::SVBImageType::SVBImageY14)
             .map_err(|e| CameraError::Other(format!("Failed to set image type: {}", e)))?;
 
-        println!("exposure = {}", self.get_exposure()?);
-
         Ok(())
     }
 

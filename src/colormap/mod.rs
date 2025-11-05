@@ -1,4 +1,7 @@
+mod inferno;
+mod magma;
 mod parula;
+mod viridis;
 
 use numeris::image::RGBA8;
 use std::sync::OnceLock;
@@ -12,6 +15,9 @@ pub fn from_string(name: &str) -> Option<&'static ColorMap> {
         "Hot" => Some(hot()),
         "Grayscale" => Some(grayscale()),
         "Red" => Some(red()),
+        "Viridis" => Some(viridis()),
+        "Inferno" => Some(inferno()),
+        "Magma" => Some(magma()),
         _ => None,
     }
 }
@@ -98,3 +104,12 @@ pub fn hot() -> &'static ColorMap {
 
 /// The MATLAB colormap is called "parula"
 pub use parula::parula;
+
+/// The Viridis colormap - perceptually uniform and colorblind-friendly
+pub use viridis::viridis;
+
+/// The Inferno colormap - perceptually uniform, high contrast
+pub use inferno::inferno;
+
+/// The Magma colormap - perceptually uniform, excellent for dark backgrounds
+pub use magma::magma;
